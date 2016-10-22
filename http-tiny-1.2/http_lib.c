@@ -1,10 +1,29 @@
 /*
- *  Http put/get mini lib
- *  written by L. Demailly
- *  updated by C. Collins and made more portable
- *  (c) 1998 Laurent Demailly - http://www.demailly.com/~dl/
- *  (c) 1996 Observatoire de Paris - Meudon - France
- *  see LICENSE for terms, conditions and DISCLAIMER OF ALL WARRANTIES
+ * http_lib.c : http-tiny implementation
+ *
+ * Copyright (c) 1996 Observatoire de Paris - Meudon - France
+ * Copyright (c) 1998 Laurent Demailly - http://www.demailly.com/~dl/
+ * Copyright (c) 2016 Christopher Collins
+ *
+ * see LICENSE for terms, conditions and DISCLAIMER OF ALL WARRANTIES
+ *
+ * Originally written by L. Demailly.
+ *
+ * Changes: 
+ * 2016-Oct-22
+ *  + Major refactor to make reentrant, and reduce continous passing of data between
+ *    caller and callee.
+ *  + Rewriting of some of the internal documentation to reflect better upon the HTTP 
+ *    standard
+ *  + All function definitions updated from K&R style to ANSI
+ *  + Fixed various easily-fixable buffer overruns.
+ *  + Winsock support
+ *  + IPv6 support
+ *  + Fixed some header parsing bugs.
+ *  + Refactored some code to make it more readable
+ *  + half-rewrote the URI parser so it doesn't try to modify the passed URI string.
+ *
+ * Original hsitory continues below.
  *
  * $Id: http_lib.c,v 3.5 1998/09/23 06:19:15 dl Exp $ 
  *
@@ -39,9 +58,8 @@
 
 #ifdef _WIN32
 /* Windows Systems */
-
 #include <winsock2.h>
-
+#include <ws2tcpip.h>
 #define strncasecmp(a,b,n) _strnicmp(a,b,n)
 
 #else
@@ -66,18 +84,6 @@ typedef int SOCKET;
 #include <assert.h>
 
 #include "http_lib.h"
-
-/* pointer to a mallocated string containing server name or NULL */
-char *http_server=NULL ;
-/* server port number */
-int  http_port=5757;
-/* pointer to proxy server name or NULL */
-char *http_proxy_server=NULL;
-/* proxy server port number or 0 */
-int http_proxy_port=0;
-/* user agent id string */
-
-static char *http_user_agent="XSB/2.0";
 
 /*
  * read a line from file descriptor
@@ -139,90 +145,103 @@ static int http_read_buffer (
 	return n;
 }
 
-
-typedef enum querymode_e {
-	CLOSE,          /* Close the socket after the query (for put) */
-	KEEP_OPEN       /* Keep it open */
-} querymode;
-
 /* beware that filename+type+rest of header must not exceed MAXBUF */
 /* so we limit filename to 256 and type to 64 chars in put & get */
 #ifndef MAXBUF
 #define MAXBUF 512
 #endif /* #ifndef MAXBUF */
 
-/*
- * Pseudo general http query
+/* Generalised HTTP Query
  *
- * send a command and additional headers to the http server.
- * optionally through the proxy (if http_proxy_server and http_proxy_port are
- * set).
+ * Sends a HTTP Verb, with optional additional headers and body to the HTTP server.
  *
- * Limitations: the url is truncated to first 256 chars and
- * the server name to 128 in case of proxy request.
+ * If keep_open is set, then pfd must be set to a SOCKET to recieve the open socket
+ * to recieve the body from the server on.
  *
- * @param command HTTP Method to use
- * @param url URL/filename queried 
+ * @param req A populated http_req structure
+ * @param method HTTP Method verb
  * @param additional_header additional headers transmitted before body.
- * @param mode flag to indicate if http_query should close the socket or not.
- * @param data Body to send. If NULL, an empty body is used
- * @param length size of data.
- * @param pfd Pointer to a SOCKET to populate with the open socket if mode is KEEP_OPEN
+ * @param keep_open If true, keep the socket open (and return via pfd), otherwise close the socket once the request is complete.
+ * @param body Request body to send. If NULL, an empty body is used
+ * @param length length of the body.
+ * @param pfd Pointer to a SOCKET to populate with the open socket if keep_open is set
 */
 static http_retcode 
-http_query(char *command, char *url, char *additional_header,
-	querymode mode, char *data, size_t length, SOCKET *pfd)
+http_query(struct http_req *req, char *method, char *additional_header,
+	BOOL keep_open, char *body, size_t length, SOCKET *pfd)
 {
-	SOCKET     s;
-	struct hostent        *hp;
-	struct sockaddr_in    server;
-	char header[MAXBUF];
-	size_t hlg;
-	http_retcode ret;
-	int  proxy = (http_proxy_server!=NULL && http_proxy_port!=0);
-	int  port = (proxy?http_proxy_port:http_port);
+	SOCKET			s;
+	struct sockaddr_storage	server;
+	char			header[MAXBUF];
+	size_t 			hlg;
+	http_retcode 		ret;
+	struct addrinfo 	addrhints;
+	struct addrinfo 	*addrinfo = NULL;
+	struct addrinfo 	*thisaddr = NULL;
+	int  			proxy = (req->proxy_server!=NULL && req->proxy_port!=0);
+	int  			port = (proxy?req->proxy_port:req->port);
 
 	/* if we're being asked to keep the socket open, the caller MUST
 	 * be prepared to pick up the socket, otherwise we'll leak sockets/fds
 	*/
-	if (mode == KEEP_OPEN) {
+	if (keep_open) {
 		assert(pfd != NULL);
 	}
 
-	/* get host info by name :*/
-	hp = gethostbyname(proxy?http_proxy_server:http_server);
-	if (hp == NULL) {
+	memset(&addrhints, 0, sizeof(addrhints));
+	addrhints.ai_flags = AI_ADDRCONFIG;
+	/* use getaddrinfo to do the lookup */
+	if (getaddrinfo(proxy?req->proxy_server:req->server, NULL, &addrhints, &addrinfo)) {
 		return ERRHOST;
 	}
-	memset(&server, 0, sizeof(server));
-	memcpy(&server.sin_addr, hp->h_addr, hp->h_length);
-	server.sin_family = hp->h_addrtype;
-	server.sin_port = htons(port);
-
-	/* create socket */
-	if ((s = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-		return ERRSOCK;
+	
+	for (thisaddr = addrinfo; thisaddr != NULL; thisaddr = thisaddr->ai_next) {
+		if (thisaddr->ai_family != AF_INET && thisaddr->ai_family != AF_INET6) {
+			continue;
+		}
+		break;
+	}
+	if (thisaddr == NULL) {
+		ret = ERRHOST;
+		goto earlybail;
+	}
+	memcpy(&server, addrinfo->ai_addr, addrinfo->ai_addrlen);
+	switch (thisaddr->ai_family) {
+		struct sockaddr_in	*s_in4;
+		struct sockaddr_in6	*s_in6;
+	case AF_INET:
+		s_in4 = (struct sockaddr_in *)&server;
+		s_in4->sin_port = htons(port);
+		break;
+	case AF_INET6:
+		s_in6 = (struct sockaddr_in6 *)&server;
+		s_in6->sin6_port = htons(port);
+		break;
 	}
 
-	//FIXME: eh, WHY?!  disable for now.
-	//setsockopt(s, SOL_SOCKET, SO_KEEPALIVE, 0, 0);
+	/* create socket */
+	if ((s = socket(thisaddr->ai_family, SOCK_STREAM, 0)) < 0) {
+		ret = ERRSOCK;
+		goto earlybail;
+	}
 
 	/* connect to server */
-	if (connect(s, (struct sockaddr *)&server, sizeof(server)) < 0) {
+	if (connect(s, (struct sockaddr *)&server, thisaddr->ai_addrlen) < 0) {
 		ret = ERRCONN;
 		goto bail;
 	}
 
 	/* create header */
 	if (proxy) {
-		sprintf(header,
+		snprintf(header, MAXBUF,
 			"%s http://%.128s:%d/%.256s HTTP/1.0\015\012User-Agent: %s\015\012%s\015\012",
-			command, http_server, http_port, url, http_user_agent, additional_header);
+			method, req->server, req->port, req->pathname, req->user_agent, additional_header);
 	} else {
-		sprintf(header,
+		snprintf(header, MAXBUF,
 			"%s /%.256s HTTP/1.0\015\012User-Agent: %s\015\012%s\015\012",
-			command, url, http_user_agent, additional_header);
+			method, req->pathname, req->user_agent, additional_header);
 	}
+	header[MAXBUF-1] = '\0';
 
 	hlg=strlen(header);
 
@@ -232,7 +251,7 @@ http_query(char *command, char *url, char *additional_header,
 		goto bail;
 	}
 
-	if ((length && data) && (send(s, data, length, 0) != length)) {
+	if ((length>0 && body != NULL) && (send(s, body, length, 0) != length)) {
 		/* short write sending data */
 		ret = ERRWRDT;
 		goto bail;
@@ -245,13 +264,17 @@ http_query(char *command, char *url, char *additional_header,
 		ret = ERRRDHD;
 	} else if (sscanf(header, "HTTP/1.%*d %03d", (int*)&ret) != 1) {
 		ret = ERRPAHD;
-	} else if (mode==KEEP_OPEN) {
+	} else if (keep_open) {
 		*pfd = s;
 	}
 bail:
 	/* close socket */
-	if (mode == CLOSE || ret < 0) {
+	if (!keep_open || ret < 0) {
 		closesocket(s);
+	}
+earlybail:
+	if (NULL != addrinfo) {
+		freeaddrinfo(addrinfo);
 	}
 	return ret;
 }
@@ -267,25 +290,27 @@ bail:
  * limitations: filename is truncated to first 256 characters 
  *              and type to 64.
  *
- * @param filename name of the ressource to create
+ * @param req req structure for the request to perform
  * @param data pointer to the data to send
  * @param length length of the data to send
  * @param overwrite lag to request to overwrite the ressource if it already existed
  * @param type type of the data, if NULL default type is used
 */
 http_retcode 
-http_put(char *filename, char *data, size_t length, int overwrite, char *type)
+http_put(struct http_req *req, char *data, size_t length, int overwrite, char *type)
 {
 	char header[MAXBUF];
 
 	if (type) {
-		sprintf(header, "Content-length: %d\015\012Content-type: %.64s\015\012%s",
+		snprintf(header, MAXBUF, "Content-length: %d\015\012Content-type: %.64s\015\012%s",
 			(int)length, type, overwrite ? "Control: overwrite=1\015\012" : "");
 	} else {
-		sprintf(header, "Content-length: %d\015\012%s", (int)length,
+		snprintf(header, MAXBUF, "Content-length: %d\015\012%s", (int)length,
 			overwrite ? "Control: overwrite=1\015\012" : "");
 	}
-	return http_query("PUT", filename, header, CLOSE, data, length, NULL);
+	header[MAXBUF-1] = '\0';
+
+	return http_query(req, "PUT", header, FALSE, data, length, NULL);
 }
 
 /*
@@ -310,7 +335,7 @@ http_put(char *filename, char *data, size_t length, int overwrite, char *type)
 */
 
 http_retcode 
-http_get(char *filename, char **pdata, size_t *plength, char *typebuf)
+http_get(struct http_req *req, char **pdata, size_t *plength, char *typebuf)
 {
 	http_retcode	ret;
 	char 		header[MAXBUF];
@@ -330,7 +355,7 @@ http_get(char *filename, char **pdata, size_t *plength, char *typebuf)
 		*typebuf = '\0';
 	}
 
-	ret = http_query("GET", filename, "", KEEP_OPEN, NULL, 0, &fd);
+	ret = http_query(req, "GET", "", TRUE, NULL, 0, &fd);
 
 	if (ret != 200) {
 		if (ret >= 0) {
@@ -406,7 +431,7 @@ http_get(char *filename, char **pdata, size_t *plength, char *typebuf)
 */
 
 http_retcode 
-http_head(char *filename, size_t *plength, char *typebuf)
+http_head(struct http_req *req, size_t *plength, char *typebuf)
 {
 	/* mostly copied from http_get : */
 	http_retcode ret;
@@ -424,7 +449,7 @@ http_head(char *filename, size_t *plength, char *typebuf)
 		*typebuf='\0';
 	}
 
-	ret = http_query("HEAD", filename, "", KEEP_OPEN, NULL, 0, &fd);
+	ret = http_query(req, "HEAD", "", TRUE, NULL, 0, &fd);
 	if (ret != 200) {
 		if (ret >= 0) {
 			closesocket(fd);
@@ -470,52 +495,80 @@ http_head(char *filename, size_t *plength, char *typebuf)
  * @param filename name of the ressource to create
 */
 
- http_retcode http_delete(char *filename) 
+ http_retcode http_delete(struct http_req *req) 
  {
-	return http_query("DELETE", filename, "", CLOSE, NULL, 0, NULL);
+	return http_query(req, "DELETE", "", FALSE, NULL, 0, NULL);
  }
 
 /* parses an url : setting the http_server and http_port global variables
  * and returning the filename to pass to http_get/put/...
  * returns a negative error code or 0 if sucessfully parsed.
  *
- * @param url writeable copy of an url
- * @param pfilename address of a pointer that will be filled with allocated filename
- * 	the pointer must be equal to NULL before calling or it will be automatically 
- *	freed (free(3))
+ * @param req a (used or zero-initialied) http_req to populate with the request data
+ * @param url the URL
+ * @return 0 for success, <0 for failure (indicating the cause)
 */
-http_retcode 
-http_parse_url(char *url, char **pfilename)
+int
+http_parse_url(struct http_req *req, const char *url)
 {
-	char *pc,c;
+	char *ourUrl = strdup(url);
+	int offs;
 
-	http_port=80;
-	if (http_server) {
-		free(http_server);
-		http_server=NULL;
-	}
-	if (*pfilename) {
-		free(*pfilename);
-		*pfilename=NULL;
-	}
+	assert(req != NULL);
 
-	if (strncasecmp("http://",url,7)) {
+	req->port = 80;
+	if (req->server) {
+		free(req->server);
+		req->server=NULL;
+	}
+	if (req->pathname) {
+		free(req->pathname);
+		req->pathname = NULL;
+	}
+	/* Filter URLs for http only at this stage. */
+	if (strncasecmp("http://",ourUrl,7)) {
 		return ERRURLH;
 	}
-	url+=7;
-	for (pc=url,c=*pc; (c && c!=':' && c!='/');) c=*pc++;
-		*(pc-1)=0;
-	if (c==':') {
-		if (sscanf(pc,"%d",&http_port)!=1) {
+
+	ourUrl += 7;
+
+	/* scan forward from the end of the protocol to the port or start of the path */	
+	offs = strcspn(ourUrl, ":/");
+
+	req->server = malloc(offs+1);
+	assert(req->server != NULL);
+	strncpy(req->server, ourUrl, offs);
+	req->server[offs] = '\0';
+
+	ourUrl += offs + 1;
+	if (ourUrl[-1] == ':') {
+		/* ':' delimiter.  port number follows */
+		if (sscanf(ourUrl,"%d", &req->port)!=1) {
 			return ERRURLP;
-		}
-		for (pc++; (*pc && *pc!='/') ; pc++) ;
-			if (*pc) pc++;
+		}		
+		offs = strcspn(ourUrl, "/");
+		ourUrl += offs + 1;
 	}
-
-	http_server = strdup(url);
-	*pfilename = strdup ( c ? pc : "") ;
-
-	return OK0;
+	req->pathname = strdup(ourUrl);
+	
+	return 0;
 }
 
+/* release any resources held by the http_req structure
+*/
+void		
+http_freereq(struct http_req *req)
+{
+	if (req->server != NULL) {
+		free(req->server);
+		req->server = NULL;
+	}
+	if (req->proxy_server != NULL) {
+		free(req->proxy_server);
+		req->proxy_server = NULL;
+	}
+	if (req->pathname) {
+		free(req->pathname);
+		req->pathname = NULL;
+	}
+}

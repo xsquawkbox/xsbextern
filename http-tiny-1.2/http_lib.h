@@ -1,23 +1,45 @@
+
 /*
- *  Http put/get mini lib
- *  written by L. Demailly
- *  (c) 1998 Laurent Demailly - http://www.demailly.com/~dl/
- *  (c) 1996 Observatoire de Paris - Meudon - France
- *  see LICENSE for terms, conditions and DISCLAIMER OF ALL WARRANTIES
+ * http_lib.h : http-tiny declarations
+ *
+ * Copyright (c) 1996 Observatoire de Paris - Meudon - France
+ * Copyright (c) 1998 Laurent Demailly - http://www.demailly.com/~dl/
+ * Copyright (c) 2016 Christopher Collins
+ *
+ * see LICENSE for terms, conditions and DISCLAIMER OF ALL WARRANTIES
+ *
+ * Originally written by L. Demailly.
+ *
+ * Changes: 
+ * 2016-Oct-22 - CC
+ *  + Protype changes to reflect major refactor (see http_lib.c)
+ *  + Fixed to make safe to include directly into C++ code.
+ *  + Documentation Updates
+ *
+ * Original history below:
  *
  * $Id: http_lib.h,v 1.4 1998/09/23 06:14:15 dl Exp $
  *
 */
 
+#ifndef _HTTP_LIB_H
+#define _HTTP_LIB_H
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-/* declarations */
-extern char *http_server;
-extern int http_port;
-extern char *http_proxy_server;
-extern int http_proxy_port;
+struct http_req {
+	char 		*server;
+	int		port;
+
+	char		*proxy_server;
+	int		proxy_port;
+
+	char		*user_agent;
+
+	char		*pathname;
+};
 
 /* return type */
 typedef enum http_recode_e {
@@ -51,14 +73,15 @@ typedef enum http_recode_e {
 } http_retcode;
 
 /* prototypes */
-http_retcode http_put(char *filename, char *data, 
-	size_t length, int overwrite, char *type);
-http_retcode http_get(char *filename, char **pdata,
-	size_t *plength, char *typebuf);
-http_retcode http_parse_url(char *url, char **pfilename);
-http_retcode http_delete(char *filename);
-http_retcode http_head(char *filename, size_t *plength, 
-	char *typebuf);
+http_retcode	http_put(struct http_req *req, char *data, size_t length, int overwrite, char *type);
+http_retcode	http_get(struct http_req *req, char **pdata, size_t *plength, char *typebuf);
+int 		http_parse_url(struct http_req *req, const char *url);
+http_retcode 	http_delete(struct http_req *req);
+http_retcode 	http_head(struct http_req *req, size_t *plength, char *typebuf);
+void		http_freereq(struct http_req *req);
+
 #ifdef __cplusplus
 }
 #endif
+
+#endif /* #ifndef _HTTP_LIB_H */
