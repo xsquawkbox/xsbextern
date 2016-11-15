@@ -28,13 +28,18 @@ static char *rcsid="$Id: http.c,v 1.4 1998/09/23 06:11:55 dl Exp $";
 
 
 #include <sys/types.h>
-#include <sys/uio.h>
-#include <unistd.h>
+// #include <sys/uio.h>
+// #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "http_lib.h"
+
+#ifdef _WIN32
+#include <winsock2.h>
+#define strcasecmp(a,b) stricmp(a,b)
+#endif
 
 int main(argc,argv) 
      int argc;
@@ -42,7 +47,8 @@ int main(argc,argv)
 {
   int  ret,lg,blocksize,r,i;
   char typebuf[70];
-  char *data=NULL,*filename=NULL,*proxy=NULL;
+  char *data=NULL,*proxy=NULL;
+  struct http_req req;
   enum {
     ERR,
     DOPUT,
@@ -56,6 +62,12 @@ int main(argc,argv)
     return 1;
   }
   i=1;
+
+#ifdef _WIN32
+  WSADATA wsaData;
+  WSAStartup(MAKEWORD(2, 0), &wsaData);
+#endif
+  memset(&req, 0, sizeof(req));
   
   if (!strcasecmp(argv[i],"put")) {
     todo=DOPUT;
@@ -74,7 +86,7 @@ int main(argc,argv)
   }
   i++;
   
-
+#if 0
   if ((proxy=getenv("http_proxy"))) {
     ret=http_parse_url(proxy,&filename);
     if (ret<0) return ret;
@@ -82,9 +94,10 @@ int main(argc,argv)
     http_server=NULL;
     http_proxy_port=http_port;
   }
+#endif
 
-  ret=http_parse_url(argv[i],&filename);
-  if (ret<0) {if (proxy) free(http_proxy_server); return ret;}
+  ret=http_parse_url(&req, argv[i]);
+  if (ret<0) { return ret; }
 
   switch (todo) {
 /* *** PUT  *** */
@@ -111,23 +124,23 @@ int main(argc,argv)
 	}
       }
       fprintf(stderr,"read %d bytes\n",lg);
-      ret=http_put(filename,data,lg,0,NULL);
+      ret=http_put(&req, data,lg,0,NULL);
       fprintf(stderr,"res=%d\n",ret);
       break;
 /* *** GET  *** */
     case DOGET:
-      ret=http_get(filename,&data,&lg,typebuf);
+      ret=http_get(&req,&data,&lg,typebuf);
       fprintf(stderr,"res=%d,type='%s',lg=%d\n",ret,typebuf,lg);
       fwrite(data,lg,1,stdout);
       break;
 /* *** HEAD  *** */
     case DOHEA:
-      ret=http_head(filename,&lg,typebuf);
+      ret=http_head(&req,&lg,typebuf);
       fprintf(stderr,"res=%d,type='%s',lg=%d\n",ret,typebuf,lg);
       break;
 /* *** DELETE  *** */
     case DODEL:
-      ret=http_delete(filename);
+      ret=http_delete(&req);
       fprintf(stderr,"res=%d\n",ret);
       break;
 /* impossible... */
@@ -136,9 +149,9 @@ int main(argc,argv)
       return 5;
   }
   if (data) free(data);
-  free(filename);
-  free(http_server);
-  if (proxy) free(http_proxy_server);
-  
+
+#ifdef _WIN32
+  WSACleanup();
+#endif
   return ( (ret==201) || (ret==200) ) ? 0 : ret;
 }

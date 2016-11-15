@@ -180,6 +180,7 @@ http_query(struct http_req *req, char *method, char *additional_header,
 	struct addrinfo 	*thisaddr = NULL;
 	int  			proxy = (req->proxy_server!=NULL && req->proxy_port!=0);
 	int  			port = (proxy?req->proxy_port:req->port);
+	int err;
 
 	/* if we're being asked to keep the socket open, the caller MUST
 	 * be prepared to pick up the socket, otherwise we'll leak sockets/fds
@@ -189,9 +190,11 @@ http_query(struct http_req *req, char *method, char *additional_header,
 	}
 
 	memset(&addrhints, 0, sizeof(addrhints));
+	addrhints.ai_family = AF_UNSPEC;
 	addrhints.ai_flags = AI_ADDRCONFIG;
 	/* use getaddrinfo to do the lookup */
-	if (getaddrinfo(proxy?req->proxy_server:req->server, NULL, &addrhints, &addrinfo)) {
+	if (err = getaddrinfo(proxy?req->proxy_server:req->server, NULL, &addrhints, &addrinfo)) {
+		printf("hostfail: %s: %s(%d)\n", proxy ? req->proxy_server : req->server, gai_strerror(err), err);
 		return ERRHOST;
 	}
 	
@@ -202,6 +205,7 @@ http_query(struct http_req *req, char *method, char *additional_header,
 		break;
 	}
 	if (thisaddr == NULL) {
+		printf("scanfail\n");
 		ret = ERRHOST;
 		goto earlybail;
 	}
@@ -511,7 +515,7 @@ http_head(struct http_req *req, size_t *plength, char *typebuf)
 int
 http_parse_url(struct http_req *req, const char *url)
 {
-	char *ourUrl = strdup(url);
+	char *ourUrl = url;
 	int offs;
 
 	assert(req != NULL);
@@ -539,18 +543,17 @@ http_parse_url(struct http_req *req, const char *url)
 	assert(req->server != NULL);
 	strncpy(req->server, ourUrl, offs);
 	req->server[offs] = '\0';
-
-	ourUrl += offs + 1;
-	if (ourUrl[-1] == ':') {
+	if (ourUrl[offs] == ':') {
+		ourUrl += offs + 1;
 		/* ':' delimiter.  port number follows */
 		if (sscanf(ourUrl,"%d", &req->port)!=1) {
 			return ERRURLP;
-		}		
+		}
 		offs = strcspn(ourUrl, "/");
-		ourUrl += offs + 1;
 	}
+	ourUrl += offs + 1;
 	req->pathname = strdup(ourUrl);
-	
+
 	return 0;
 }
 
