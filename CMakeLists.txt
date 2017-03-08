@@ -21,5 +21,11 @@ set(PCRE_BUILD_TESTS OFF CACHE BOOL "Build pcre tests")
 set(PCRE_SHOW_REPORT OFF CACHE BOOL "Show PCRE configuration report")
 add_subdirectory(pcre-8.37)
 
-# HTTP-Tiny
-add_subdirectory(http-tiny-1.2)
+# CURL
+set(BUILD_CURL_EXE OFF CACHE BOOL  "Build CURL exe" FORCE)
+set(CURL_STATICLIB ON CACHE BOOL "Build CURL Static Library" FORCE)
+set(HTTP_ONLY ON CACHE BOOL "HTTP supprt only (disable other protos)" FORCE)
+set(CURL_DISABLE_CRYPTO_AUTH ON CACHE BOOL "Disable Cryptographic Authentication" FORCE)
+set(ENABLE_MANUAL OFF CACHE BOOL "Build the CURL Manual" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "Build CURL Test Suite" FORCE)
+add_subdirectory(curl-7.53.1)
