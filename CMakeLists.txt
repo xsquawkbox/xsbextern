@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.0.2)
 set(SKIP_INSTALL_ALL TRUE)
-add_subdirectory(zlib-1.2.8)
+add_subdirectory(zlib-1.2.11)
 set(ZLIB_FOUND TRUE)
-set(ZLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/zlib-1.2.8 ${CMAKE_CURRENT_BINARY_DIR}/zlib-1.2.8)
+set(ZLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/zlib-1.2.11 ${CMAKE_CURRENT_BINARY_DIR}/zlib-1.2.11)
 set(ZLIB_LIBRARY $<TARGET_FILE:zlibstatic>)
 
 set(PNG_FRAMEWORK FALSE CACHE BOOL "Build libpng as Framework" FORCE)
