@@ -3,7 +3,7 @@ set(SKIP_INSTALL_ALL TRUE)
 add_subdirectory(zlib-1.2.11)
 set(ZLIB_FOUND TRUE)
 set(ZLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/zlib-1.2.11 ${CMAKE_CURRENT_BINARY_DIR}/zlib-1.2.11)
-set(ZLIB_LIBRARY $<TARGET_FILE:zlibstatic>)
+set(ZLIB_LIBRARY zlibstatic)
 
 set(PNG_FRAMEWORK FALSE CACHE BOOL "Build libpng as Framework" FORCE)
 set(PNG_DEBUG FALSE CACHE BOOL "Build libpng with debuggings" FORCE)
@@ -13,7 +13,6 @@ set(PNG_TESTS FALSE CACHE BOOL "Build libpng tests" FORCE)
 add_subdirectory(libpng-1.6.28)
 set(PNG_FOUND TRUE)
 set(PNG_LIBRARY png_static)
-add_dependencies(png_static zlibstatic)
 
 # PCRE
 set(PCRE_BUILD_PCREGREP OFF CACHE BOOL "Build pcregrep")
