@@ -11,8 +11,8 @@ set(PNG_STATIC TRUE CACHE BOOL "Build libpng static" FORCE)
 set(PNG_SHARED FALSE CACHE BOOL "Build libpng shared" FORCE)
 set(PNG_TESTS FALSE CACHE BOOL "Build libpng tests" FORCE)
 add_subdirectory(libpng-1.6.28)
-set(PNG_FOUND TRUE)
-set(PNG_LIBRARY png_static)
+set(PNG_FOUND TRUE CACHE BOOL "PNG Library Available" FORCE)
+set(PNG_LIBRARY png_static CACHE STRING "PNG Library Path" FORCE)
 
 # PCRE
 set(PCRE_BUILD_PCREGREP OFF CACHE BOOL "Build pcregrep")
