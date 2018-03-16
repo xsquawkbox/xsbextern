@@ -68,3 +68,6 @@ if(XSBEXTERN_BUILD_CURL)
 
   add_subdirectory(curl-7.53.1 EXCLUDE_FROM_ALL)
 endif()
+
+# JSON
+add_subdirectory(json EXCLUDE_FROM_ALL)
