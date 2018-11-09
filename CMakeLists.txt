@@ -10,6 +10,7 @@ elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
   set(XSBEXTERN_BUILD_ZLIB ON)
   set(XSBEXTERN_BUILD_CURL ON) 
   set(XSBEXTERN_BUILD_LIBPNG ON) 
+  set(XSBEXTERN_BUILD_OPENAL_SOFT ON)
 else()
   message(FATAL_ERROR "Unrecognised Platform.  Aborting.")
 endif()
@@ -67,6 +68,20 @@ if(XSBEXTERN_BUILD_CURL)
   set(CMAKE_USE_OPENSSL OFF CACHE BOOL "Make use of OpenSSL" FORCE)
 
   add_subdirectory(curl-7.53.1 EXCLUDE_FROM_ALL)
+endif()
+
+if(XSBEXTERN_BUILD_OPENAL_SOFT)
+  set(ALSOFT_UTILS OFF CACHE BOOL "Build and install utility programs" FORCE)
+  set(ALSOFT_NO_CONFIG_UTIL ON CACHE BOOL "Disable building the alsoft-config utility" FORCE)
+  set(ALSOFT_EXAMPLES OFF CACHE BOOL "Build and install example programs" FORCE)
+  set(ALSOFT_TESTS OFF CACHE BOOL "Build and install test programs" FORCE)
+  set(ALSOFT_CONFIG OFF CACHE BOOL "Install alsoft.conf sample configuration file" FORCE)
+  set(ALSOFT_HRTF_DEFS OFF CACHE BOOL "Install HRTF definition files" FORCE)
+  set(ALSOFT_AMBDEC_PRESETS OFF CACHE BOOL "Install AmbDec preset files" FORCE)
+  set(ALSOFT_INSTALL ON CACHE BOOL "Install headers and libraries" FORCE)
+
+
+  add_subdirectory(openal-soft-1.19.1 EXCLUDE_FROM_ALL)
 endif()
 
 # JSON
