@@ -15,7 +15,6 @@ else()
   message(FATAL_ERROR "Unrecognised Platform.  Aborting.")
 endif()
 
-
 if(XSBEXTERN_BUILD_ZLIB)
   set(SKIP_INSTALL_ALL TRUE)
   add_subdirectory(zlib-1.2.11 EXCLUDE_FROM_ALL)
@@ -80,8 +79,14 @@ if(XSBEXTERN_BUILD_OPENAL_SOFT)
   set(ALSOFT_AMBDEC_PRESETS OFF CACHE BOOL "Install AmbDec preset files" FORCE)
   set(ALSOFT_INSTALL ON CACHE BOOL "Install headers and libraries" FORCE)
 
-
   add_subdirectory(openal-soft-1.19.1 EXCLUDE_FROM_ALL)
+
+  # OpenAL doesn't export its public headers with its target.  Force this.
+  target_include_directories(OpenAL
+	  INTERFACE
+	  $<BUILD_INTERFACE:${OpenAL_SOURCE_DIR}/include>)
+else()
+  find_library(OpenAL NAMES al openal OpenAL DOC "OpenAL Audio Library")
 endif()
 
 # JSON
