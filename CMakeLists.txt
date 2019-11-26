@@ -1,31 +1,7 @@
 cmake_minimum_required(VERSION 3.0.2)
 
-# export the conan zlib library so libpng finds it.
-set(ZLIB_LIBRARY CONAN_PKG::ZLIB)
-set(ZLIB_INCLUDE_DIR ${CONAN_INCLUDE_DIRS_ZLIB})
-
-if(CMAKE_SYSTEM_NAME MATCHES "Linux")
-  set(XSBEXTERN_BUILD_LIBPNG ON) 
-elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
-  set(XSBEXTERN_BUILD_LIBPNG ON) 
-elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
-  set(XSBEXTERN_BUILD_LIBPNG ON)
+if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   set(XSBEXTERN_BUILD_OPENAL_SOFT ON)
-else()
-  message(FATAL_ERROR "Unrecognised Platform.  Aborting.")
-endif()
-
-if (XSBEXTERN_BUILD_LIBPNG)
-  set(PNG_FRAMEWORK FALSE CACHE BOOL "Build libpng as Framework" FORCE)
-  set(PNG_DEBUG FALSE CACHE BOOL "Build libpng with debuggings" FORCE)
-  set(PNG_STATIC TRUE CACHE BOOL "Build libpng static" FORCE)
-  set(PNG_SHARED FALSE CACHE BOOL "Build libpng shared" FORCE)
-  set(PNG_TESTS FALSE CACHE BOOL "Build libpng tests" FORCE)
-  add_subdirectory(libpng-1.6.28 EXCLUDE_FROM_ALL)
-  set(PNG_FOUND TRUE CACHE BOOL "PNG Library Available" FORCE)
-  set(PNG_LIBRARY png_static CACHE STRING "PNG Library Path" FORCE)
-else()
-  find_library(PNG NAMES png png16 DOC "libpng image library")
 endif()
 
 if(XSBEXTERN_BUILD_OPENAL_SOFT)
