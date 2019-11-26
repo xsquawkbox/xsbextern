@@ -1,25 +1,18 @@
 cmake_minimum_required(VERSION 3.0.2)
 
+# export the conan zlib library so libpng finds it.
+set(ZLIB_LIBRARY CONAN_PKG::ZLIB)
+set(ZLIB_INCLUDE_DIR ${CONAN_INCLUDE_DIRS_ZLIB})
+
 if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   set(XSBEXTERN_BUILD_LIBPNG ON) 
 elseif(CMAKE_SYSTEM_NAME MATCHES "Darwin")
   set(XSBEXTERN_BUILD_LIBPNG ON) 
 elseif(CMAKE_SYSTEM_NAME MATCHES "Windows")
-  set(XSBEXTERN_BUILD_ZLIB ON)
-  set(XSBEXTERN_BUILD_LIBPNG ON) 
+  set(XSBEXTERN_BUILD_LIBPNG ON)
   set(XSBEXTERN_BUILD_OPENAL_SOFT ON)
 else()
   message(FATAL_ERROR "Unrecognised Platform.  Aborting.")
-endif()
-
-if(XSBEXTERN_BUILD_ZLIB)
-  set(SKIP_INSTALL_ALL TRUE)
-  add_subdirectory(zlib-1.2.11 EXCLUDE_FROM_ALL)
-  set(ZLIB_FOUND TRUE)
-  set(ZLIB_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/zlib-1.2.11 ${CMAKE_CURRENT_BINARY_DIR}/zlib-1.2.11)
-  set(ZLIB_LIBRARY zlibstatic)
-else()
-  find_library(ZLIB NAMES z zlib DOC "zlib compression library")
 endif()
 
 if (XSBEXTERN_BUILD_LIBPNG)
@@ -34,13 +27,6 @@ if (XSBEXTERN_BUILD_LIBPNG)
 else()
   find_library(PNG NAMES png png16 DOC "libpng image library")
 endif()
-
-# PCRE
-# we always build PCRE.
-set(PCRE_BUILD_PCREGREP OFF CACHE BOOL "Build pcregrep")
-set(PCRE_BUILD_TESTS OFF CACHE BOOL "Build pcre tests")
-set(PCRE_SHOW_REPORT OFF CACHE BOOL "Show PCRE configuration report")
-add_subdirectory(pcre-8.37 EXCLUDE_FROM_ALL)
 
 if(XSBEXTERN_BUILD_OPENAL_SOFT)
   set(ALSOFT_UTILS OFF CACHE BOOL "Build and install utility programs" FORCE)
